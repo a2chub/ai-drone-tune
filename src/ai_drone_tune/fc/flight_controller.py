@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 import time
 from dataclasses import dataclass, asdict
 
@@ -17,6 +18,8 @@ class FCInfo:
     api_version: str = ""
     board: str = ""
     craft_name: str = ""
+    armed: bool = False
+    pid_loop_hz: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -81,7 +84,22 @@ class FlightController:
         except MSPError:
             pass
         self.info.craft_name = self.msp.craft_name()
+        try:
+            st = self.msp.status()
+            self.info.armed = st.armed
+            self.info.pid_loop_hz = round(st.pid_loop_hz)
+        except Exception:  # older firmware: status layout differs, not fatal
+            pass
         return self.info
+
+    def ensure_disarmed(self) -> None:
+        """Refuse configuration writes while the craft is armed."""
+        if self.msp is not None:
+            try:
+                if self.msp.status().armed:
+                    raise MSPError("flight controller is ARMED - disarm and remove props before changing settings")
+            except struct.error:
+                pass
 
     # ------------------------------------------------------------------
     def cli_session(self) -> CLISession:

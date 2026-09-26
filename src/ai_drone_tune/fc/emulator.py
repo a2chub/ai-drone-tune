@@ -30,6 +30,15 @@ DEFAULT_SETTINGS: list[tuple[str, str, str, str]] = [
     ("rpm_filter_min_hz", "100", "master", "30-200"),
     ("debug_mode", "NONE", "master", "NONE|CYCLETIME|BATTERY|GYRO_FILTERED|ACCELEROMETER|PIDLOOP|GYRO_SCALED"),
     ("blackbox_sample_rate", "1/2", "master", "1/1|1/2|1/4|1/8|1/16"),
+    ("blackbox_device", "SPIFLASH", "master", "NONE|SPIFLASH|SDCARD|SERIAL"),
+    ("blackbox_mode", "NORMAL", "master", "NORMAL|MOTOR_TEST|ALWAYS"),
+    ("blackbox_disable_gyrounfilt", "OFF", "master", "OFF|ON"),
+    ("blackbox_disable_setpoint", "OFF", "master", "OFF|ON"),
+    ("blackbox_disable_rpm", "OFF", "master", "OFF|ON"),
+    ("blackbox_disable_motors", "OFF", "master", "OFF|ON"),
+    ("blackbox_disable_pids", "OFF", "master", "OFF|ON"),
+    ("blackbox_disable_debug", "OFF", "master", "OFF|ON"),
+    ("pid_process_denom", "1", "master", "1-16"),
     ("p_roll", "45", "profile", "0-250"), ("i_roll", "80", "profile", "0-250"),
     ("d_roll", "40", "profile", "0-250"), ("f_roll", "120", "profile", "0-1000"),
     ("p_pitch", "47", "profile", "0-250"), ("i_pitch", "84", "profile", "0-250"),
@@ -81,6 +90,7 @@ class EmulatedFC:
         self.profile = 0
         self.rateprofile = 0
         self.cli_log: list[str] = []
+        self.armed = False
 
     # --- pyserial-like API ---------------------------------------------
     @property
@@ -202,6 +212,11 @@ class EmulatedFC:
             self.flash = bytearray()
             self.erasing = 2
             self._send(cmd, b"", v2)
+        elif cmd == M.MSP_STATUS:
+            self._send(cmd, struct.pack("<HHHIBH", 250, 0, 0x21, 1 if self.armed else 0, self.profile, 120), v2)
+        elif cmd == M.MSP_BLACKBOX_CONFIG:
+            rate = M.BLACKBOX_SAMPLE_RATES.index(self.settings["blackbox_sample_rate"][0])
+            self._send(cmd, struct.pack("<BBBBHBI", 1, 1, 1, 1 << rate, 32, rate, 0), v2)
         elif cmd == M.MSP_SDCARD_SUMMARY:
             self._send(cmd, struct.pack("<BBBII", 0, 0, 0, 0, 0), v2)
         else:

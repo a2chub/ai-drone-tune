@@ -259,6 +259,11 @@ def from_blackbox_headers(headers: dict[str, str]) -> FCConfig:
             cli_name = _HEADER_RENAME.get(name, name)
             cfg.values[cli_name] = value.strip()
             cfg.sections[cli_name] = guess_section(cli_name)
+    p_int = headers.get("P interval", "")
+    if p_int.isdigit() and int(p_int) in (1, 2, 4, 8, 16):
+        cfg.values["blackbox_sample_rate"] = f"1/{int(p_int)}"
+    if cfg.values.get("debug_mode", "").isdigit():
+        cfg.values["debug_mode"] = {"0": "NONE", "6": "GYRO_SCALED"}.get(cfg.values["debug_mode"], cfg.values["debug_mode"])
     if version < (4, 3):
         cfg.values.setdefault("_legacy_firmware", "1")
     return cfg

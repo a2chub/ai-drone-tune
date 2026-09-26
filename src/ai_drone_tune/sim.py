@@ -197,14 +197,14 @@ def simulate(cfg: SimConfig) -> bytes:
         "debug_mode": "0",
     }
     headers.update(cfg.extra_headers)
-    w = BlackboxWriter(fields, headers, i_interval=32, minmotor=48, vbatref=1650)
+    w = BlackboxWriter(fields, headers, i_interval=32, minmotor=48, vbatref=1650, p_interval=cfg.log_denom)
     w.write_header()
     idx = {name: i for i, name in enumerate(names)}
     t0 = 5_000_000
     log_i = 0
     for k in range(0, n, cfg.log_denom):
         row = [0] * len(names)
-        row[idx["loopIteration"]] = log_i
+        row[idx["loopIteration"]] = k
         row[idx["time"]] = t0 + int(k * dt * 1e6)
         for ax in range(3):
             row[idx[f"axisP[{ax}]"]] = int(rows_p[k, ax])

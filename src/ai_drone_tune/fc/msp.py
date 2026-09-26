@@ -162,6 +162,32 @@ class DataflashSummary:
 
 
 @dataclass
+class FCStatus:
+    cycle_time_us: int
+    armed: bool
+    pid_profile: int
+    cpu_load_pct: float
+
+    @property
+    def pid_loop_hz(self) -> float:
+        return 1e6 / self.cycle_time_us if self.cycle_time_us else 0.0
+
+
+BLACKBOX_DEVICES = ["NONE", "SPIFLASH", "SDCARD", "SERIAL", "VIRTUAL"]
+BLACKBOX_SAMPLE_RATES = ["1/1", "1/2", "1/4", "1/8", "1/16"]
+
+
+@dataclass
+class BlackboxConfig:
+    supported: bool
+    device: str
+    rate_denom: int
+    p_ratio: int
+    sample_rate: str
+    fields_disabled_mask: int | None
+
+
+@dataclass
 class SdcardSummary:
     supported: bool
     state: int
@@ -258,6 +284,22 @@ class MSPClient:
             return SdcardSummary(False, 0, 0, 0, 0)
         flags, state, err, free_kb, total_kb = struct.unpack_from("<BBBII", p, 0)
         return SdcardSummary(bool(flags & 1), state, err, free_kb, total_kb)
+
+    def status(self) -> FCStatus:
+        p = self.request(MSP_STATUS)
+        cycle, _i2c, _sensors, flags, profile = struct.unpack_from("<HHHIB", p, 0)
+        load = struct.unpack_from("<H", p, 11)[0] / 10.0 if len(p) >= 13 else 0.0
+        return FCStatus(cycle, bool(flags & 1), profile, load)  # box 0 (ARM) is always active
+
+    def blackbox_config(self) -> BlackboxConfig:
+        p = self.request(MSP_BLACKBOX_CONFIG)
+        if len(p) < 7:
+            return BlackboxConfig(False, "NONE", 0, 0, "", None)
+        supported, device, _num, denom, p_ratio, sample = struct.unpack_from("<BBBBHB", p, 0)
+        mask = struct.unpack_from("<I", p, 7)[0] if len(p) >= 11 else None
+        dev = BLACKBOX_DEVICES[device] if device < len(BLACKBOX_DEVICES) else str(device)
+        rate = BLACKBOX_SAMPLE_RATES[sample] if sample < len(BLACKBOX_SAMPLE_RATES) else str(sample)
+        return BlackboxConfig(bool(supported), dev, denom, p_ratio, rate, mask)
 
     def dataflash_read(self, address: int, size: int) -> tuple[int, bytes]:
         """Read a chunk of dataflash. Returns (address, data). Data may be shorter than requested."""

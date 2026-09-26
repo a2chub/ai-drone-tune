@@ -189,10 +189,11 @@ SLOW_FIELDS = [
 
 class BlackboxWriter:
     def __init__(self, fields: list[FieldSpec], headers: dict[str, str],
-                 i_interval: int = 32, minmotor: int = 48, vbatref: int = 420):
+                 i_interval: int = 32, minmotor: int = 48, vbatref: int = 420, p_interval: int = 1):
         self.fields = fields
         self.headers = headers
         self.i_interval = i_interval
+        self.p_interval = p_interval
         self.minmotor = minmotor
         self.vbatref = vbatref
         self.out = bytearray()
@@ -206,7 +207,7 @@ class BlackboxWriter:
             "Product:Blackbox flight data recorder by Nicholas Sherlock",
             "Data version:2",
             f"I interval:{self.i_interval}",
-            "P interval:1",
+            f"P interval:{self.p_interval}",
             f"P ratio:{self.i_interval}",
             "Field I name:" + ",".join(f.name for f in self.fields),
             "Field I signed:" + ",".join(str(f.signed) for f in self.fields),

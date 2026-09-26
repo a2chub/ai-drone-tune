@@ -64,6 +64,32 @@ backups/<機体名>/..._before.diff.txt
 history/<機体名>/<日時>.json                          (rollback 用)
 ```
 
+### LLM から使う (Claude Code スキル)
+
+`.claude/skills/aidt-tuning/` に、Claude Code 用のスキルを同梱しています。
+機体をつなぐ PC でこのリポジトリを Claude Code で開くと、チャットで次のように進められます。
+
+- 「機体をつないだ、ログを見て」→ 状態確認 → ダウンロード・解析 → 説明 → 変更案 → **了承後に**適用
+- 「プロップウォッシュが気になる」→ 解析結果と感想を突き合わせ、小さな変更を提案
+- データが足りないとき → 不足している理由、推奨する Blackbox/FC 設定、不足分だけの飛行手順 (モード・スロットル開度・回数・時間) を指示
+- レース記録 →「3 分 × 4 ヒート」などに合わせて Flash に収まる記録レートを提案し、レース後に解析
+- 「今どういう状況？」→ 履歴・ジャーナル・前回比較から状況レポートを作成
+
+スキルは、非対話で JSON を返す次のコマンドを使います (人が使うこともできます)。
+FC に書き込むコマンドは `--yes` がないと実行されません。
+
+| コマンド | 内容 |
+|---|---|
+| `aidt status --json` | 接続機体、Flash 使用量、Blackbox 設定、前回の変更、ジャーナル末尾 |
+| `aidt propose [--file X] [--purpose race] --json` | DL → 検証 → 消去 → 解析 → データ十分性判定 → 変更案。設定は書き込まない |
+| `aidt check X.bbl [--purpose race] --json` | ログが解析に足りるか。不足項目と、それを補う推奨設定・飛行内容 |
+| `aidt plan [--from-log X] [--purpose race --race-duration 180 --heats 3] --json` | フライトプランと推奨 FC 設定 (Flash 容量の見積もり付き) |
+| `aidt preflight [--purpose race ...] --json` | 接続中の FC の記録設定と Flash の空きを確認し、プランを作成 |
+| `aidt apply P.json --only a,b --yes --json` / `aidt set ... --dry-run --json` | 変更案の適用 / 直接変更 (事前確認) |
+| `aidt compare A.bbl B.bbl --json` / `aidt history --craft Q --json` | 前後比較 / 機体の履歴 |
+| `aidt journal add --craft Q --kind feedback "..."` / `aidt journal show --craft Q` | 機体ごとのチューニングジャーナル |
+| `aidt --emulate sim.bbl <command>` | 機体なしで上記を試す (FC エミュレータ) |
+
 永続設定: `aidt config --set mode=auto erase_after_download=true auto_min_confidence=0.6 max_step=0.1`
 
 ### マニュアルモードで使える指示の例
@@ -145,7 +171,9 @@ src/ai_drone_tune/
   blackbox/   stream.py (各エンコーディング)  parser.py (BBL パーサ)  writer.py (BBL エンコーダ)
   analysis/   flight_data.py  spectrum.py  noise.py  step_response.py  behaviour.py  report.py
   tuning/     config.py (get/diff/ヘッダ解析)  recommender.py  instructions.py  apply.py  rates.py  changes.py
-  pipeline.py (モード制御・watch)  report.py  sim.py  cli.py
+  analysis/data_quality.py (データ十分性)  tuning/flight_plan.py (フライトプラン・推奨記録設定)
+  pipeline.py (モード制御・watch・propose)  report.py  compare.py  journal.py  sim.py  cli.py
+.claude/skills/aidt-tuning/  (Claude Code スキル: SKILL.md + reference/)
 ```
 
 > ⚠️ 自動チューニングの結果は、必ずプロペラを外した状態でのモーター温度チェックや短いテスト飛行で確認してください。

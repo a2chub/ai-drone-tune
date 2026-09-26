@@ -80,7 +80,7 @@ def _same(a: str | None, b: str) -> bool:
 
 def apply_changes(fc, changes: list[Change], cfg: FCConfig, *, backup_dir: Path | None = None,
                   history_dir: Path | None = None, save: bool = True, log=print,
-                  analysis_ref: str | None = None) -> ApplyResult:
+                  analysis_ref: str | None = None, journal_home: Path | None = None) -> ApplyResult:
     """Apply ``changes`` through the FC CLI. ``fc`` is an opened FlightController."""
     result = ApplyResult()
     changes = [c for c in changes if not c.advisory]
@@ -91,6 +91,14 @@ def apply_changes(fc, changes: list[Change], cfg: FCConfig, *, backup_dir: Path 
     if errors:
         raise ApplyError("validation failed:\n  " + "\n  ".join(errors))
 
+    if getattr(fc.info, "armed", False):
+        raise ApplyError("flight controller is ARMED - disarm and remove props before changing settings")
+    if fc.cli is None or not fc.cli.active:
+        try:
+            fc.ensure_disarmed()
+        except Exception as e:
+            if "ARMED" in str(e):
+                raise ApplyError(str(e)) from e
     cli = fc.cli_session()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     craft = re.sub(r"[^\w.\-]+", "_", fc.info.craft_name or "unnamed")
@@ -137,6 +145,14 @@ def apply_changes(fc, changes: list[Change], cfg: FCConfig, *, backup_dir: Path 
             "changes": [c.to_dict() for c in result.applied],
             "failed": [{"change": c.to_dict(), "error": e} for c, e in result.failed],
         }, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    if journal_home is not None and result.applied:
+        from ..journal import append
+
+        append(journal_home, fc.info.craft_name, "change",
+               f"{len(result.applied)} setting(s) applied" + (f", {len(result.failed)} failed" if result.failed else ""),
+               {"changes": [c.to_dict() for c in result.applied], "history": str(result.history_path),
+                "backup": str(result.backup_path) if result.backup_path else None})
 
     if result.failed and result.applied:
         log("Some changes failed; saving the ones that succeeded.")

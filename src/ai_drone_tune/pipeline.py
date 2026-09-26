@@ -13,12 +13,15 @@ from .analysis.report import LogAnalysis, analyze_log, pick_best
 from .blackbox.parser import parse_file
 from .fc.blackbox_download import DownloadError, download_blackbox, sanitize
 from .fc.flight_controller import FlightController
+from . import journal
+from .analysis.data_quality import assess
 from .report import save_reports
 from .settings import AppSettings
 from .tuning.apply import ApplyResult, apply_changes, validate
 from .tuning.changes import Change, ChangeSet
 from .tuning.config import FCConfig, from_blackbox_headers, merge, parse_get_output
 from .tuning.instructions import InstructionParser, llm_parse
+from .tuning.flight_plan import build_plan
 from .tuning.recommender import Thresholds, recommend
 
 # settings compared between the flight log and the FC to detect a stale log
@@ -198,6 +201,9 @@ def run_session(device: str, settings: AppSettings, mode: str | None = None, ui:
             if dl is not None:
                 res.download_path = dl.path
                 ui.out(f"Saved {dl.path} ({dl.log_count} log(s))")
+                journal.append(Path(settings.home), info.craft_name, "download",
+                               f"downloaded {dl.path.name} ({dl.log_count} log(s), erased={dl.erased})",
+                               {"file": str(dl.path)})
             elif mode != "manual":
                 ui.out("No new flight data - nothing to tune.")
                 return res
@@ -264,6 +270,7 @@ def run_session(device: str, settings: AppSettings, mode: str | None = None, ui:
         if res.approved:
             res.applied = apply_changes(fc, res.approved, cfg, backup_dir=settings.backup_dir,
                                         history_dir=settings.history_dir, log=ui.out,
+                                        journal_home=Path(settings.home),
                                         analysis_ref=str(res.reports[0]) if res.reports else None)
             ui.out(f"Applied {len(res.applied.applied)} change(s)"
                    + (f", {len(res.applied.failed)} failed" if res.applied.failed else "")
@@ -324,3 +331,126 @@ def watch(settings: AppSettings, mode: str | None = None, ui: UI = UI(), poll_s:
             if key not in present and now - handled[key] > rearm_s:
                 del handled[key]
         time.sleep(poll_s)
+
+
+# ---------------------------------------------------------------------------
+# Non-interactive flow for scripts / LLM agents
+# ---------------------------------------------------------------------------
+def _log(msg: str) -> None:
+    print(msg, file=sys.stderr)
+
+
+def propose_session(settings: AppSettings, device: str | None = None, bbl_file: Path | None = None,
+                    purpose: str = "tuning", race_duration_s: float = 180.0, heats: int = 1,
+                    serial_factory=None, log: Callable[[str], None] = _log) -> dict:
+    """Download (if connected), analyse, assess data quality, recommend - never writes settings.
+
+    Returns a JSON-friendly summary; the proposal / report files are written to disk.
+    """
+    out: dict = {"purpose": purpose, "fc": None, "download": None, "log_file": None, "analysis": None,
+                 "data_quality": None, "recommendations": None, "flight_plan": None, "files": []}
+    fc_cfg = None
+    info = None
+    flash_total = flash_used = None
+    pid_hz = None
+    if device is not None:
+        fc = FlightController(device, settings.baudrate, serial_factory=serial_factory).open()
+        try:
+            info = fc.identify()
+            out["fc"] = info.to_dict()
+            pid_hz = info.pid_loop_hz or None
+            try:
+                fl = fc.msp.dataflash_summary()
+                flash_total, flash_used = fl.total_size or None, fl.used_size
+            except Exception:
+                pass
+            if bbl_file is None:
+                try:
+                    dl = download_blackbox(fc, settings.log_dir, verify_second_pass=settings.verify_second_pass,
+                                           erase=settings.erase_after_download, log=log)
+                except DownloadError as e:
+                    out["download"] = {"error": str(e)}
+                    dl = None
+                if dl is not None:
+                    bbl_file = dl.path
+                    out["download"] = {"file": str(dl.path), "bytes": dl.size, "logs": dl.log_count,
+                                       "erased": dl.erased, "sha256": dl.sha256}
+                    if dl.erased:
+                        flash_used = 0
+                    journal.append(Path(settings.home), info.craft_name, "download",
+                                   f"downloaded {dl.path.name} ({dl.log_count} log(s), erased={dl.erased})",
+                                   {"file": str(dl.path)})
+                elif out["download"] is None:
+                    out["download"] = {"empty": True}
+            fc_cfg = parse_get_output(fc.get_all())
+            fc_cfg.firmware = info.version
+        finally:
+            if fc.port is not None:
+                if fc.cli is not None and fc.cli.active:
+                    fc.exit_cli()
+                fc.close()
+
+    craft = info.craft_name if info else ""
+    best = None
+    quality = None
+    if bbl_file is not None:
+        out["log_file"] = str(bbl_file)
+        analyses, best = analyze_file(Path(bbl_file), UI(out=log))
+        target = best
+        if target is None and analyses:
+            target = max(analyses, key=lambda a: a.data.flight_time_s)
+        if target is not None:
+            craft = craft or target.log.craft_name
+            from .analysis.data_quality import pid_loop_hz_from_headers
+
+            pid_hz = pid_hz or pid_loop_hz_from_headers(target.log)
+            planned = race_duration_s * heats if purpose == "race" else None
+            quality = assess(target.log, target.data, purpose, target.log.byte_size, flash_total, planned)
+            out["data_quality"] = quality.to_dict()
+        else:
+            from .blackbox.parser import parse_file as _pf
+
+            logs = _pf(Path(bbl_file))
+            if logs:
+                quality = assess(max(logs, key=lambda lg: lg.duration_s), None, purpose)
+                out["data_quality"] = quality.to_dict()
+
+    cfg = fc_cfg
+    if best is not None:
+        log_cfg = from_blackbox_headers(best.log.headers)
+        cfg = merge(fc_cfg, log_cfg) if fc_cfg is not None else log_cfg
+        cs = recommend(best, cfg, Thresholds(max_step=settings.max_step))
+        cs.changes = [c for c in cs.changes if c.category in settings.categories or c.advisory]
+        if fc_cfg is not None:
+            stale = stale_settings(log_cfg, fc_cfg)
+            if stale:
+                cs.notes.append("FC settings differ from the flight log: " + "; ".join(stale))
+        if quality is not None and not quality.sufficient:
+            blockers = [i.id for i in quality.issues if i.severity == "blocker"]
+            if blockers:
+                dropped = [c for c in cs.changes if c.category in ("pid", "feedforward")]
+                cs.changes = [c for c in cs.changes if c.category not in ("pid", "feedforward")]
+                if dropped:
+                    cs.notes.append(f"PID/FF recommendations withheld - data insufficient ({', '.join(blockers)})")
+        out["analysis"] = best.to_dict()
+        out["recommendations"] = cs.to_dict()
+        base = settings.report_dir / sanitize(craft) / Path(bbl_file).stem
+        files = save_reports(best, cs, base, str(bbl_file), plots=settings.plots)
+        proposal = base.parent / (base.name + ".proposal.json")
+        proposal.write_text(json.dumps({"fc": out["fc"], "pid_profile": cfg.pid_profile,
+                                        "rate_profile": cfg.rate_profile, "log_file": str(bbl_file),
+                                        "data_quality": out["data_quality"], **cs.to_dict()},
+                                       indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        out["files"] = [str(f) for f in files] + [str(proposal)]
+        out["proposal_file"] = str(proposal)
+        journal.append(Path(settings.home), craft or "unnamed", "analysis",
+                       f"analysed {Path(bbl_file).name}: {len(cs.applicable())} change(s) proposed, "
+                       f"data quality {quality.score if quality else '-'}",
+                       {"proposal": str(proposal), "report": str(files[0])})
+
+    focus = quality.missing_segments() if quality is not None and quality.issues else None
+    out["flight_plan"] = build_plan(purpose, focus=focus, cfg=cfg, pid_hz=pid_hz, flash_total=flash_total,
+                                    flash_used=flash_used, race_duration_s=race_duration_s, heats=heats,
+                                    bytes_per_frame=(best.log.byte_size / len(best.log.frames)
+                                                     if best is not None and len(best.log.frames) else 50.0))
+    return out

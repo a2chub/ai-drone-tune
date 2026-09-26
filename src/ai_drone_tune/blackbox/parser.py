@@ -90,6 +90,7 @@ class FlightLog:
     gps_frames: np.ndarray | None = None
     events: list[Event] = field(default_factory=list)
     stats: dict = field(default_factory=dict)
+    byte_size: int = 0  # size of this log inside the file (for data-rate estimates)
 
     # ------------------------------------------------------------------
     def __contains__(self, name: str) -> bool:
@@ -515,6 +516,7 @@ class _LogParser:
             gps_frames=gps_arr,
             events=events,
             stats=stats,
+            byte_size=self.end - self.start,
         )
 
     # ------------------------------------------------------------------
