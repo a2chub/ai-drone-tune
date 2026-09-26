@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-drone-tune"
+version = "0.1.0"
+description = "Betaflight FPV racing drone auto-tuner: blackbox download, noise / step-response analysis, and filter / PID tuning over USB"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+ai = ["anthropic>=0.40"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+aidt = "ai_drone_tune.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
