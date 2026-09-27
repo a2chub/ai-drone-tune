@@ -11,7 +11,8 @@ aidt が計測・検証・書き込みといった確実さが要る処理を担
 ## 前提
 
 - FC に触れられるのは、機体が USB 接続された PC 上の Claude Code だけ。接続がない環境 (クラウドなど) では `--file` で既存ログを使うオフライン作業に限る。
-- `aidt --version` が失敗したら、リポジトリで `pip install -e ".[plot]"` を実行する。
+- aidt は uv の環境で動かす。コマンドはリポジトリのルートで `uv run aidt ...` として実行する (以下では `aidt` と省略)。
+- `uv run aidt --version` が失敗したら、リポジトリのルートで `uv sync --extra plot` を実行する。uv 自体がなければ、ユーザーに uv のインストール (https://docs.astral.sh/uv/) を案内する。
 - すべてのコマンドで `--json` を使う。stdout が JSON、進捗は stderr に出る。
 - データは `~/ai-drone-tune/` (`--home` で変更可) に保存される。
 - 注意: CLI モードに入ったコマンドは終了時に FC が再起動する。連続実行するときは 3〜5 秒あける。不要な接続はしない。

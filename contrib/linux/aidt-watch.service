@@ -1,4 +1,5 @@
-# systemd --user unit. Install:
+# systemd --user unit. Install aidt first: cd <repo> && uv tool install ".[plot]"  (-> ~/.local/bin/aidt)
+# then:
 #   cp aidt-watch.service ~/.config/systemd/user/ && systemctl --user daemon-reload
 #   systemctl --user enable --now aidt-watch.service      # always running, or rely on the udev rule
 # A background service has no terminal: use mode "auto", or "approve" (proposals are saved and applied
