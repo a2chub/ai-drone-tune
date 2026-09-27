@@ -17,7 +17,9 @@ dependencies = [
 [project.optional-dependencies]
 plot = ["matplotlib>=3.7"]
 ai = ["anthropic>=0.40"]
-dev = ["pytest>=7"]
+
+[dependency-groups]
+dev = ["pytest>=7", "ruff>=0.5"]
 
 [project.scripts]
 aidt = "ai_drone_tune.cli:main"
@@ -28,3 +30,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F", "E9", "B"]
+ignore = ["B008", "B905"]

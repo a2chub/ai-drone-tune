@@ -1,4 +1,5 @@
 # Registers a logon task that runs `aidt watch` in the background.
+# Install aidt first: cd <repo> && uv tool install ".[plot]"
 # Run in PowerShell:  powershell -ExecutionPolicy Bypass -File install-task.ps1
 $aidt = (Get-Command aidt).Source
 $action = New-ScheduledTaskAction -Execute $aidt -Argument "watch"
