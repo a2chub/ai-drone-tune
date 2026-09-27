@@ -1,0 +1,14 @@
+# systemd --user unit. Install:
+#   cp aidt-watch.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+#   systemctl --user enable --now aidt-watch.service      # always running, or rely on the udev rule
+# A background service has no terminal: use mode "auto", or "approve" (proposals are saved and applied
+# later with `aidt apply <file>.proposal.json`).
+[Unit]
+Description=ai-drone-tune: Betaflight blackbox download / auto-tune on USB connect
+
+[Service]
+ExecStart=%h/.local/bin/aidt watch
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
