@@ -10,11 +10,11 @@ aidt の自動処理と、LLM による判断・説明・対話を組み合わ�
 
 ## 準備
 
-1. [セットアップ](setup.md) の 1〜2 を行います。uv のインストール、クローン、`uv sync --extra plot` です。
+1. [セットアップ](setup.md) の 1〜2 を行います。uv のインストール、クローン、`make setup` です。
 2. **機体を USB 接続する PC で**、このリポジトリを Claude Code (CLI またはデスクトップアプリ) で開きます。
    ```bash
    cd ai-drone-tune
-   claude
+   make skill      # = claude (Claude Code を起動)
    ```
    スキルは自動で読み込まれます。`/skills` で `aidt-tuning` が表示されれば準備完了です。
 
