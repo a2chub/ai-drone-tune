@@ -11,14 +11,17 @@ Betaflight を搭載した FPV レース用ドローンのための、Blackbox �
 | [コマンドの使い方](docs/cli-usage.md) | 端末から `aidt` を使う方法: モード、コマンド一覧、データの保存先、対応設定 |
 | [Skill の使い方](docs/skill-usage.md) | Claude Code と対話しながらチューニング・計画・レポート作成を進める方法 |
 
-最短の手順:
+最短の手順 (`make help` でターゲット一覧を表示):
 
 ```bash
 git clone https://github.com/a2chub/ai-drone-tune.git && cd ai-drone-tune
-uv sync --extra plot
-uv run aidt demo --yes      # 機体なしで全工程を試す
-uv run aidt watch           # 機体を USB 接続すると、DL → 解析 → チューニング
+make setup     # uv で環境を作成 (uv sync --extra plot)
+make demo      # 機体なしで全工程を試す
+make watch     # 機体を USB 接続すると、DL → 解析 → チューニング
+make skill     # Claude Code を起動し、スキルで対話しながらチューニング
 ```
+
+`make` が使えない環境 (Windows など) では、`uv sync --extra plot` と `uv run aidt ...` で同じことができます。
 
 ## できること
 

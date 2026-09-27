@@ -7,6 +7,9 @@
 
 準備は [セットアップ](setup.md) を参照してください。以下の例では `aidt` と書きます。
 
+よく使う操作には `make` のショートカットがあります (例: `make watch MODE=auto`、`make propose`、`make check FILE=x.bbl`)。
+一覧は `make help` または [セットアップ](setup.md#make-ターゲット一覧) を参照してください。
+
 ## 基本の流れ
 
 ```bash
